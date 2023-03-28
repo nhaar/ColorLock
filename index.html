@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.15.1/dist/phaser-arcade-physics.min.js"></script>
+    <script src="color_lock.js"></script>
+    <script src="constants.js"></script>
+    <link rel="stylesheet" href="stylesheet.css">
+</head>
+<body>
+
+    <div class="game-view">
+        <div class="game-info">
+
+            <div>
+                Optimal solution:
+            </div>
+            <div id="optimal-solution-number">
+                LOADING...
+            </div>
+            <div>
+                Current attempt:
+            </div>
+            <div id="number-of-attempts">
+                LOADING...
+            </div>
+            <div>
+                <br>
+                KEYBINDS
+                <br>
+                R - Restarts current game
+                <br>
+                Space - New game
+                <br>
+                S - Show best move
+            </div>
+
+        </div>
+
+        <div id="game"></div>
+        
+    </div>
+
+
+    <script>
+
+    var config = {
+        type: Phaser.AUTO,
+        width: WIDTH,
+        height: HEIGHT,
+        scale: {parent:"game"},
+        parent: "game",
+        scene: {
+            preload: preload,
+            create: create,
+            update: update
+        }
+    };
+
+    var game = new Phaser.Game(config);
+
+    let colorLock = new ColorLock();
+
+    function preload ()
+    {
+        const SIZES = ["big", "small"];
+        const COLORS = ["green", "yellow", "blue", "red", "blank"];
+        const VERTICAL_ORIENTATIONS = ["top", "bottom"];
+        const HORIZONTAL_ORIENTATIONS = ["left", "right"];
+        const IMAGES_DIR = "assets/";
+        const PNG_EXTENSION = ".png";
+
+        let color_images = []
+
+        for (let i = 0; i < SIZES.length; i++)
+        {
+            for (let j = 0; j < COLORS.length; j++)
+            {
+                for (let k = 0; k < VERTICAL_ORIENTATIONS.length; k++)
+                {
+                    for (let l = 0; l < HORIZONTAL_ORIENTATIONS.length; l++)
+                    {
+                        imageName = SIZES[i] + "_" + COLORS[j] + "_" + VERTICAL_ORIENTATIONS[k] + "_" + HORIZONTAL_ORIENTATIONS[l];
+                        imagePath = IMAGES_DIR + imageName + PNG_EXTENSION;
+                        this.load.image(imageName, imagePath);
+                    }
+                }
+            }
+        };
+
+        this.load.image("base", IMAGES_DIR + "base" + PNG_EXTENSION);
+        this.load.image("open", IMAGES_DIR + "open_lock" + PNG_EXTENSION);
+
+    }
+
+    function colorTranslator(color)
+    {
+        switch (color)
+        {
+            case 0:
+                return "blank";
+            case 1:
+                return "green";
+            case 2:
+                return "yellow";
+            case 3:
+                return "blue";
+            case 4:
+                return "red";
+            default:
+                return undefined;
+        }
+    }
+
+    function getImageName(radialCoord, angularCoord, color)
+    {
+        let name = "";
+        if (radialCoord == 0)
+        {
+            name += "small_";
+        }
+        else
+        {
+            name += "big_";
+        }
+
+        name += colorTranslator(color) + "_";
+
+        if (angularCoord == 0 || angularCoord == 3)
+        {
+            name += "top_";
+        }
+        else
+        {
+            name += "bottom_";
+        }
+
+        if (angularCoord == 0 || angularCoord == 1)
+        {
+            name += "left";
+        }
+        else
+        {
+            name += "right";
+        }
+
+        return name;
+    }
+
+    function renderColorLock(grid, game)
+    {
+        game.add.image(0, 0, "base").setOrigin(0, 0).setScale(IMAGES_SCALE);
+        for (let radialCoord = 0; radialCoord < 2; radialCoord++)
+        {
+            for (let angularCoord = 0; angularCoord < 4; angularCoord++)
+            {
+                let color = grid[radialCoord][angularCoord];
+                game.add.image(0, 0, getImageName(radialCoord, angularCoord, color)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+            }
+        }
+    }
+
+
+
+    // Angles must be in radians and as an array [angle1, angle2]
+    function pointInArc(point, centerX, centerY, minRadius, maxRadius, angles)
+    {
+        let x = point[0];
+        let y = point[1];
+
+        // Write cartesian with origin in the center of the color lock
+        x = x - centerX;
+        y = centerY - y;
+
+        // Convert to polar
+        let radius = Math.sqrt(x**2 + y**2);
+        // x = 0 means that we are in the exact center, which isn't part of any arc, and it would give a division error
+        // So I'm exiting out earlier
+        if (x == 0)
+        {
+            return false;
+        }
+
+        let angle = Math.atan(y / x);
+        // Fixing calculator output
+        if (x < 0)
+        {
+            angle += Math.PI;
+        }
+        else if (y < 0)
+        {
+            angle += 2 * Math.PI;
+        }
+
+        let startAngle = angles[0];
+        let endAngle = angles[1];
+
+        return (radius > minRadius && radius < maxRadius && angle > startAngle && angle < endAngle);
+    }
+
+    // Function detects the angular coordinate and gives an array of angles corresponding to
+    // the start and end angles of that "quadrant"
+    function getAnglesFromAngularCoord(angularCoord)
+    {
+        switch (angularCoord)
+        {
+            case 0:
+                return [Math.PI / 2, Math.PI];
+            case 1:
+                return [Math.PI, 3 * Math.PI / 2];
+            case 2:
+                return [3 * Math.PI / 2, 2 * Math.PI];
+            case 3:
+                return [0, Math.PI / 2];
+            default:
+                return undefined;
+        }
+    }
+
+    // This function takes as an input a coordinate pair [x, y]
+    // And returns the coordinate of the slot this position correspond to
+    // By coordinate of the slot, I mean in the color lock board, like [0, 0] is the inner circle top left
+    function getSlotCoordinate(point)
+    {
+        for (let radialCoord = 0; radialCoord < 2; radialCoord++)
+        {
+            for (let angularCoord = 0; angularCoord < 4; angularCoord++)
+            {
+                let minRadius, maxRadius;
+                if (radialCoord === 1)
+                {
+                    minRadius = BIG_SLOT_MIN_RADIUS;
+                    maxRadius = BIG_SLOT_MAX_RADIUS;
+                }
+                else
+                {
+                    minRadius = SMALL_SLOT_MIN_RADIUS;
+                    maxRadius = SMALL_SLOT_MAX_RADIUS;
+                }
+                if (pointInArc(point, BOARD_CENTER_WIDTH, BOARD_CENTER_HEIGHT, minRadius, maxRadius, getAnglesFromAngularCoord(angularCoord)))
+                {
+                    return [radialCoord, angularCoord];
+                }
+            }
+        }
+        return undefined;
+    }
+
+    function isInClickableArea(point)
+    {
+        return pointInArc(point, BOARD_CENTER_WIDTH, BOARD_CENTER_HEIGHT, SMALL_SLOT_MIN_RADIUS, BIG_SLOT_MAX_RADIUS, [0, 2 * Math.PI]);
+    }
+
+
+    function updateColorLock(clickedPosition, targetPosition, colorClicked, game, lock)
+    {
+        game.add.image(0, 0, getImageName(clickedPosition[0], clickedPosition[1], 0)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+        game.add.image(0, 0, getImageName(targetPosition[0], targetPosition[1], colorClicked)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+        if (showSolutionMode)
+        {
+            drawSolutionCircle(game, lock.grid);
+        }
+    }
+
+    function updateOpenLock(game)
+    {
+        game.add.image(0, 0, "open").setOrigin(0, 0).setScale(IMAGES_SCALE);
+    }
+
+    function resetLock(game)
+    {
+        colorLock = new ColorLock();
+        renderColorLock(colorLock.grid, game)
+    }
+
+
+    // Loading the solutions
+    let solutions = {};
+
+    let keyR;
+    let keySpace;
+    let keyS;
+
+    let solutionCircle;
+    let solutionEmptyCircle;
+    let solutionOuterRing;
+
+    function create ()
+    {
+
+        fetch('solutions.tsv')
+            .then(response => response.text())
+            .then(text =>
+            {
+                let rows = text.split('\n');
+                for (let i = 0; i < rows.length; i++)
+                {
+                    cols = rows[i].split('\t');
+                    solutions[cols[0]] = cols[1];
+                    
+                }
+            });
+
+        this.add.image(0, 0, "base").setOrigin(0, 0).setScale(IMAGES_SCALE);
+
+        renderColorLock(colorLock.grid, this);
+        let grid = colorLock.grid;
+
+        keyR = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.R);
+        keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+        keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
+
+        solutionCircle = this.add.graphics();
+        solutionEmptyCircle = this.add.graphics();
+        solutionOuterRing = this.add.graphics();
+
+        //test
+        
+
+    }
+
+    // Initialize variables for Update
+    let mouseClicked = false;
+    let currentlyWinning = false;
+    let pressedR = false;
+    let pressedSpace = false;
+    let pressedS = false;
+    let showSolutionMode = false;
+
+
+    function drawSolutionCircle(game, grid)
+    {
+                // This statement will stop the circle from being rendered if the game is over
+                if (JSON.stringify(grid) == JSON.stringify([[0, 2, 3, 4], [1, 2, 3, 4]]))
+                {
+                    
+                    showSolutionMode = false;
+                    return;
+                }
+                // Give shape to circle
+                solutionCircle = game.add.graphics();
+                solutionCircle.fillStyle(0x00ff00, 0.5);
+
+                solutionEmptyCircle = game.add.graphics();
+                solutionEmptyCircle.fillStyle(0x00000000, 1);
+
+                solutionOuterRing = game.add.graphics();
+                solutionOuterRing.lineStyle(4, 0xffffff, 1);
+
+
+                let radius;
+                let move = JSON.parse(solutions[JSON.stringify(grid)])[0];
+
+                // Set radius based on the radial coordinate
+                if (move[0] === 0)
+                {
+                    radius = (LOCK_CIRCLE_LEFT - INNER_LEFT_EDGE_WIDTH);
+                    distance = SMALL_SLOT_MIN_RADIUS + radius/2;
+                }
+                else
+                {
+                    radius = (INNER_LEFT_EDGE_WIDTH - BOARD_LEFT_EDGE_WIDTH);
+                    distance = BIG_SLOT_MIN_RADIUS + radius/2;
+                }
+
+                // Set angle
+                let angle;
+
+                switch (move[1])
+                {
+                    case 0:
+                        angle = 3 * Math.PI / 4;
+                        break;
+                    case 1:
+                        angle = 5 * Math.PI / 4;
+                        break;
+                    case 2:
+                        angle = 7 * Math.PI / 4;
+                        break;
+                    case 3:
+                        angle = Math.PI / 4;
+                        break;
+                    default:
+                        angle = 0;
+                        break;
+                }
+                x = BOARD_CENTER_WIDTH + distance * Math.cos(angle);
+                y = BOARD_CENTER_HEIGHT - distance * Math.sin(angle);
+
+                //solutionOuterRing.fillCircle(x, y, 80);
+                solutionOuterRing.beginPath();
+                solutionOuterRing.arc(x, y, radius/4, 0, Math.PI * 2);
+                solutionOuterRing.closePath();
+                solutionOuterRing.strokePath();
+
+                solutionOuterRing.beginPath();
+                solutionOuterRing.arc(x, y, radius/6, 0, Math.PI * 2);
+                solutionOuterRing.closePath();
+                solutionOuterRing.strokePath();
+                solutionCircle.fillCircle(x, y, radius/3);
+    }
+
+    function update()
+    {
+        let optimalSolutionsDiv = document.getElementById("optimal-solution-number");
+        let totalAttemptsDiv = document.getElementById("number-of-attempts");
+        // This is not very efficient, loading big dictionary every time, fix later
+        if (solutions !== {})
+        {
+            let JSONstring;
+            // Need to catch it because for a split second it gets undefined
+            try
+            {
+                JSONstring = JSON.parse(solutions[JSON.stringify(colorLock.startingPosition)]);
+                optimalSolutionsDiv.innerText = JSONstring.length + " moves";
+            }
+            catch
+            {
+                JSONstring = "Error";
+            }
+        }
+        //optimalSolutionsDiv.innerText = JSON.parse(solutions[JSON.stringify(colorLock.startingPosition)]);
+        totalAttemptsDiv.innerText = colorLock.totalMoves + " moves";
+        if (keyR.isDown && !pressedR)
+        {
+            colorLock.restartGrid();
+            renderColorLock(colorLock.grid, this)
+            pressedR = true;
+        }
+        if (!keyR.isDown)
+        {
+            pressedR = false;
+        }
+
+        if (keySpace.isDown && !pressedSpace)
+        {
+            // Putting restart grid simply to avoid wincondition
+            colorLock.restartGrid()
+            resetLock(this);
+            pressedSpace = true;
+        }
+        if (!keySpace.isDown)
+        {
+            pressedSpace = false;
+        }
+
+        if (keyS.isDown && !pressedS )
+        {
+            // change mode
+            showSolutionMode = ! showSolutionMode;
+            // Need to remove the circle from the screen
+            if (!showSolutionMode)
+            {
+                // Rendering everything is a (bad) workaround because I couldn't destroy the circle!
+                renderColorLock(colorLock.grid, this);
+            }
+            else
+            {
+                drawSolutionCircle(this, colorLock.grid);
+            }
+
+            pressedS = true;
+        }
+        if (!keyS.isDown)
+        {
+            pressedS = false;
+        }
+        
+        if (colorLock.isWinCondition() && !currentlyWinning)
+        {
+            currentlyWinning = true;
+            updateOpenLock(this);
+            this.input.setDefaultCursor('default');
+        }
+
+        if (!colorLock.isWinCondition() && currentlyWinning)
+            {
+                currentlyWinning = false;
+            }
+
+
+        let mouseX = this.input.mousePointer.x;
+        let mouseY = this.input.mousePointer.y;
+
+
+        let pointer = this.input.activePointer;
+        let leftButtonDown = pointer.isDown && (pointer.rightButtonDown() === 0)
+
+
+        // Put main code inside of here
+        // to make it so you can't click after you have won
+        if (!currentlyWinning) 
+        {
+
+            if (isInClickableArea([mouseX, mouseY]))
+            {
+                this.input.setDefaultCursor('pointer');
+
+                let rightButtonDown = pointer.rightButtonDown()
+                
+
+                // Using a flag 'mouseClicked' to make sure it only runs once
+                if (leftButtonDown && !mouseClicked)
+                {
+                    mouseClicked = true;
+                    let lockCoord = getSlotCoordinate([mouseX, mouseY]);
+                    if (colorLock.isValidMove(lockCoord[0], lockCoord[1]))
+                    {
+                        let colorClicked = colorLock.getColor(lockCoord[0],lockCoord[1]);
+                    let targetPosition = colorLock.findEmptySlot();
+                    colorLock.clickColor(lockCoord[0], lockCoord[1]);
+                    updateColorLock(lockCoord, targetPosition, colorClicked, this, colorLock);
+                    }
+
+                }
+            }
+            else
+            {
+                this.input.setDefaultCursor('default');
+            }
+
+        }
+
+
+        // Reseting the click flag
+        if (!leftButtonDown)
+        {
+            mouseClicked = false;
+        }
+    }
+    </script>
+
+</body>
+</html>

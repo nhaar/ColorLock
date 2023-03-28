@@ -1,0 +1,35 @@
+@font-face {
+    font-family: 'Burbank Big Regular';
+    src: url('fonts/BurbankBigRegularBlack.eot');
+    src: url('fonts/BurbankBigRegularBlack.eot?#iefix') format('embedded-opentype'),
+        url('fonts/BurbankBigRegularBlack.woff2') format('woff2'),
+        url('fonts/BurbankBigRegularBlack.woff') format('woff'),
+        url('fonts/BurbankBigRegularBlack.ttf') format('truetype'),
+        url('fonts/BurbankBigRegularBlack.svg#BurbankBigRegularBlack') format('svg');
+    font-weight: 900;
+    font-style: italic;
+    font-display: swap;
+}
+
+
+
+body {
+    background-color: #22a4f3;
+    font-family: 'Gill Sans', 'Gill Sans MT', Calibri, 'Trebuchet MS', sans-serif;
+    font-size: 24px;
+    font-family: 'Burbank Big Regular';
+}
+
+.game-view {
+    display: flex;
+}
+
+.game-info {
+    display: block;
+    margin-right: 50px;
+}
+
+canvas {
+    display: block;
+    margin: auto;
+}
