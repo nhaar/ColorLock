@@ -148,14 +148,26 @@
 
     function renderColorLock(grid, game)
     {
-        game.add.image(0, 0, "base").setOrigin(0, 0).setScale(IMAGES_SCALE);
+        imageController["open"].destroy();
+
         for (let radialCoord = 0; radialCoord < 2; radialCoord++)
         {
             for (let angularCoord = 0; angularCoord < 4; angularCoord++)
             {
+                coordString = JSON.stringify([radialCoord, angularCoord]);
+                if (!firstTimeLoad)
+                {
+                    imageController[coordString].destroy();
+                }
+                
                 let color = grid[radialCoord][angularCoord];
-                game.add.image(0, 0, getImageName(radialCoord, angularCoord, color)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+                imageController[coordString] = game.add.image(0, 0, getImageName(radialCoord, angularCoord, color)).setOrigin(0, 0).setScale(IMAGES_SCALE);                
             }
+        }
+
+        if (firstTimeLoad)
+        {
+            firstTimeLoad = false;
         }
     }
 
@@ -253,17 +265,23 @@
 
     function updateColorLock(clickedPosition, targetPosition, colorClicked, game, lock)
     {
-        game.add.image(0, 0, getImageName(clickedPosition[0], clickedPosition[1], 0)).setOrigin(0, 0).setScale(IMAGES_SCALE);
-        game.add.image(0, 0, getImageName(targetPosition[0], targetPosition[1], colorClicked)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+        // First destroy old ones to avoid lag 
+        clickedString = JSON.stringify(clickedPosition);
+        targetString = JSON.stringify(targetPosition);
+        imageController[clickedString].destroy();
+        imageController[targetString] = game.add.image(0, 0, getImageName(targetPosition[0], targetPosition[1], colorClicked)).setOrigin(0, 0).setScale(IMAGES_SCALE);
+
         if (showSolutionMode)
         {
+            destroySolutionCircle();
             drawSolutionCircle(game, lock.grid);
         }
     }
 
     function updateOpenLock(game)
     {
-        game.add.image(0, 0, "open").setOrigin(0, 0).setScale(IMAGES_SCALE);
+        imageController["open"] = game.add.image(0, 0, "open").setOrigin(0, 0).setScale(IMAGES_SCALE);        
+        destroySolutionCircle();
     }
 
     function resetLock(game)
@@ -283,6 +301,9 @@
     let solutionCircle;
     let solutionEmptyCircle;
     let solutionOuterRing;
+    let firstTimeLoad = true;
+
+    let imageController = {};
 
     function create ()
     {
@@ -301,6 +322,8 @@
             });
 
         this.add.image(0, 0, "base").setOrigin(0, 0).setScale(IMAGES_SCALE);
+        imageController["open"] = this.add.image(0, 0, "open").setOrigin(0, 0).setScale(IMAGES_SCALE);
+        imageController["open"].destroy();
 
         renderColorLock(colorLock.grid, this);
         let grid = colorLock.grid;
@@ -309,11 +332,6 @@
         keySpace = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
         keyS = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S);
 
-        solutionCircle = this.add.graphics();
-        solutionEmptyCircle = this.add.graphics();
-        solutionOuterRing = this.add.graphics();
-
-        //test
         
 
     }
@@ -329,74 +347,78 @@
 
     function drawSolutionCircle(game, grid)
     {
-                // This statement will stop the circle from being rendered if the game is over
-                if (JSON.stringify(grid) == JSON.stringify([[0, 2, 3, 4], [1, 2, 3, 4]]))
-                {
-                    
-                    showSolutionMode = false;
-                    return;
-                }
-                // Give shape to circle
-                solutionCircle = game.add.graphics();
-                solutionCircle.fillStyle(0x00ff00, 0.5);
+        // This statement will stop the circle from being rendered if the game is over
+        if (JSON.stringify(grid) == JSON.stringify([[0, 2, 3, 4], [1, 2, 3, 4]]))
+        {
+            
+            showSolutionMode = false;
+            return;
+        }
+        // Give shape to circle
+        solutionCircle = game.add.graphics();
+        solutionCircle.fillStyle(0x00ff00, 0.5);
 
-                solutionEmptyCircle = game.add.graphics();
-                solutionEmptyCircle.fillStyle(0x00000000, 1);
-
-                solutionOuterRing = game.add.graphics();
-                solutionOuterRing.lineStyle(4, 0xffffff, 1);
+        solutionOuterRing = game.add.graphics();
+        solutionOuterRing.lineStyle(4, 0xffffff, 1);
 
 
-                let radius;
-                let move = JSON.parse(solutions[JSON.stringify(grid)])[0];
+        let radius;
+        let move = JSON.parse(solutions[JSON.stringify(grid)])[0];
 
-                // Set radius based on the radial coordinate
-                if (move[0] === 0)
-                {
-                    radius = (LOCK_CIRCLE_LEFT - INNER_LEFT_EDGE_WIDTH);
-                    distance = SMALL_SLOT_MIN_RADIUS + radius/2;
-                }
-                else
-                {
-                    radius = (INNER_LEFT_EDGE_WIDTH - BOARD_LEFT_EDGE_WIDTH);
-                    distance = BIG_SLOT_MIN_RADIUS + radius/2;
-                }
+        // Set radius based on the radial coordinate
+        if (move[0] === 0)
+        {
+            radius = (LOCK_CIRCLE_LEFT - INNER_LEFT_EDGE_WIDTH);
+            distance = SMALL_SLOT_MIN_RADIUS + radius/2;
+        }
+        else
+        {
+            radius = (INNER_LEFT_EDGE_WIDTH - BOARD_LEFT_EDGE_WIDTH);
+            distance = BIG_SLOT_MIN_RADIUS + radius/2;
+        }
 
-                // Set angle
-                let angle;
+        // Set angle
+        let angle;
 
-                switch (move[1])
-                {
-                    case 0:
-                        angle = 3 * Math.PI / 4;
-                        break;
-                    case 1:
-                        angle = 5 * Math.PI / 4;
-                        break;
-                    case 2:
-                        angle = 7 * Math.PI / 4;
-                        break;
-                    case 3:
-                        angle = Math.PI / 4;
-                        break;
-                    default:
-                        angle = 0;
-                        break;
-                }
-                x = BOARD_CENTER_WIDTH + distance * Math.cos(angle);
-                y = BOARD_CENTER_HEIGHT - distance * Math.sin(angle);
+        switch (move[1])
+        {
+            case 0:
+                angle = 3 * Math.PI / 4;
+                break;
+            case 1:
+                angle = 5 * Math.PI / 4;
+                break;
+            case 2:
+                angle = 7 * Math.PI / 4;
+                break;
+            case 3:
+                angle = Math.PI / 4;
+                break;
+            default:
+                angle = 0;
+                break;
+        }
+        x = BOARD_CENTER_WIDTH + distance * Math.cos(angle);
+        y = BOARD_CENTER_HEIGHT - distance * Math.sin(angle);
 
-                //solutionOuterRing.fillCircle(x, y, 80);
-                solutionOuterRing.beginPath();
-                solutionOuterRing.arc(x, y, radius/4, 0, Math.PI * 2);
-                solutionOuterRing.closePath();
-                solutionOuterRing.strokePath();
+        //solutionOuterRing.fillCircle(x, y, 80);
+        solutionOuterRing.beginPath();
+        solutionOuterRing.arc(x, y, radius/4, 0, Math.PI * 2);
+        solutionOuterRing.closePath();
+        solutionOuterRing.strokePath();
 
-                solutionOuterRing.beginPath();
-                solutionOuterRing.arc(x, y, radius/6, 0, Math.PI * 2);
-                solutionOuterRing.closePath();
-                solutionOuterRing.strokePath();
-                solutionCircle.fillCircle(x, y, radius/3);
+        solutionOuterRing.beginPath();
+        solutionOuterRing.arc(x, y, radius/6, 0, Math.PI * 2);
+        solutionOuterRing.closePath();
+        solutionOuterRing.strokePath();
+        solutionCircle.fillCircle(x, y, radius/3);
+    }
+
+    function destroySolutionCircle()
+    {
+        solutionCircle.destroy();
+        solutionOuterRing.destroy();
+        solutionOuterRing.destroy();
     }
 
     function update()
