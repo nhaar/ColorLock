@@ -270,7 +270,7 @@
         targetString = JSON.stringify(targetPosition);
         imageController[clickedString].destroy();
         imageController[targetString] = game.add.image(0, 0, getImageName(targetPosition[0], targetPosition[1], colorClicked)).setOrigin(0, 0).setScale(IMAGES_SCALE);
-
+        
         if (showSolutionMode)
         {
             destroySolutionCircle();
@@ -472,8 +472,7 @@
             // Need to remove the circle from the screen
             if (!showSolutionMode)
             {
-                // Rendering everything is a (bad) workaround because I couldn't destroy the circle!
-                renderColorLock(colorLock.grid, this);
+                destroySolutionCircle();
             }
             else
             {
